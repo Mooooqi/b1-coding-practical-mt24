@@ -1,8 +1,9 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
-from .terrain import generate_reference_and_limits
+from terrain import generate_reference_and_limits
 
 class Submarine:
     def __init__(self):
@@ -75,7 +76,12 @@ class Mission:
 
     @classmethod
     def from_csv(cls, file_name: str):
-        # You are required to implement this method
+        mission_data = pd.read_csv(file_name)
+        reference = mission_data['reference'].values
+        cave_height = mission_data['cave_height'].values
+        cave_depth = mission_data['cave_depth'].values
+
+        return cls(reference=reference, cave_height=cave_height, cave_depth=cave_depth)
         pass
 
 
@@ -84,24 +90,29 @@ class ClosedLoop:
         self.plant = plant
         self.controller = controller
 
-    def simulate(self,  mission: Mission, disturbances: np.ndarray) -> Trajectory:
-
+    def simulate(self, mission: Mission, disturbances: np.ndarray) -> Trajectory:
         T = len(mission.reference)
         if len(disturbances) < T:
             raise ValueError("Disturbances must be at least as long as mission duration")
-        
-        positions = np.zeros((T, 2))
-        actions = np.zeros(T)
+
+        positions = np.zeros((T, 2))  # To store the positions at each time step
+        actions = np.zeros(T)  # To store control actions at each time step
         self.plant.reset_state()
 
         for t in range(T):
             positions[t] = self.plant.get_position()
-            observation_t = self.plant.get_depth()
-            # Call your controller here
+            current_depth = self.plant.get_depth()
+            reference_depth = mission.reference[t]
+
+            # Call the controller to compute the control action
+            actions[t] = self.controller.compute(reference_depth, current_depth, self.plant.dt)
+            
+            # Apply the control action and disturbance to the submarine's dynamics
             self.plant.transition(actions[t], disturbances[t])
 
         return Trajectory(positions)
-        
+
+    # The missing method
     def simulate_with_random_disturbances(self, mission: Mission, variance: float = 0.5) -> Trajectory:
         disturbances = np.random.normal(0, variance, len(mission.reference))
         return self.simulate(mission, disturbances)
